@@ -4,15 +4,18 @@
 #
 Name     : redsocks
 Version  : 78a73fca15f4676c42d5dcc209484c40de2c6e33
-Release  : 8
+Release  : 9
 URL      : https://github.com/darkk/redsocks/archive/78a73fca15f4676c42d5dcc209484c40de2c6e33.tar.gz
 Source0  : https://github.com/darkk/redsocks/archive/78a73fca15f4676c42d5dcc209484c40de2c6e33.tar.gz
+Source1  : redsocks.tmpfiles
 Summary  : No detailed summary available
 Group    : Development/Tools
 License  : Apache-2.0
 Requires: redsocks-bin
+Requires: redsocks-config
 BuildRequires : libevent-dev
 Patch1: 0001-Add-make-install-target.patch
+Patch2: 0002-set-config-file-path.patch
 
 %description
 This tool allows you to redirect any TCP connection to SOCKS or HTTPS
@@ -21,14 +24,24 @@ proxy using your firewall, so redirection is system-wide.
 %package bin
 Summary: bin components for the redsocks package.
 Group: Binaries
+Requires: redsocks-config
 
 %description bin
 bin components for the redsocks package.
 
 
+%package config
+Summary: config components for the redsocks package.
+Group: Default
+
+%description config
+config components for the redsocks package.
+
+
 %prep
 %setup -q -n redsocks-78a73fca15f4676c42d5dcc209484c40de2c6e33
 %patch1 -p1
+%patch2 -p1
 
 %build
 export LANG=C
@@ -37,6 +50,8 @@ make V=1  %{?_smp_mflags}
 %install
 rm -rf %{buildroot}
 %make_install
+mkdir -p %{buildroot}/usr/lib/tmpfiles.d
+install -m 0644 %{SOURCE1} %{buildroot}/usr/lib/tmpfiles.d/redsocks.conf
 
 %files
 %defattr(-,root,root,-)
@@ -44,3 +59,8 @@ rm -rf %{buildroot}
 %files bin
 %defattr(-,root,root,-)
 /usr/bin/redsocks
+
+%files config
+%defattr(-,root,root,-)
+/usr/lib/systemd/system/redsocks.service
+/usr/lib/tmpfiles.d/redsocks.conf
