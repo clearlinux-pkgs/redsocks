@@ -1,0 +1,32 @@
+From 14cb9e330e41801d76d1471cbf0664ee89460b75 Mon Sep 17 00:00:00 2001
+From: Alberto Murillo <alberto.murillo.silva@intel.com>
+Date: Tue, 1 Nov 2016 16:44:32 -0600
+Subject: [PATCH 2/2] set config file path
+
+Signed-off-by: Alberto Murillo <alberto.murillo.silva@intel.com>
+---
+ redsocks.service | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/redsocks.service b/redsocks.service
+index 2913b7d..1031710 100644
+--- a/redsocks.service
++++ b/redsocks.service
+@@ -1,11 +1,12 @@
+ [Unit]
+ Description=Transparent redirector of any TCP connection to proxy using your firewall
++ConditionPathExists=/etc/redsocks.conf
+ 
+ [Service]
+ Type=forking
+ PIDFile=/run/redsocks/redsocks.pid
+-EnvironmentFile=/etc/conf.d/redsocks
+-User=redsocks
++User=nobody
++Environment=REDSOCKS_CONF=/etc/redsocks.conf
+ ExecStartPre=/usr/bin/redsocks -t -c $REDSOCKS_CONF
+ ExecStart=/usr/bin/redsocks -c $REDSOCKS_CONF \
+   -p /run/redsocks/redsocks.pid
+-- 
+2.7.4
+

@@ -1,18 +1,18 @@
-From 27a30a144cec74af87c42623a1c1ef15df3551c4 Mon Sep 17 00:00:00 2001
+From 3f66bc7c54c0e1de07efccebaa84d99f2f0238f1 Mon Sep 17 00:00:00 2001
 From: Alberto Murillo Silva <alberto.murillo.silva@intel.com>
 Date: Tue, 1 Nov 2016 15:10:45 -0600
-Subject: [PATCH] Add make install target
+Subject: [PATCH 1/2] Add make install target
 
 Signed-off-by: Alberto Murillo Silva <alberto.murillo.silva@intel.com>
 ---
- Makefile | 4 ++++
- 1 file changed, 4 insertions(+)
+ Makefile | 6 ++++++
+ 1 file changed, 6 insertions(+)
 
 diff --git a/Makefile b/Makefile
-index 9d0f49c..770d7bb 100644
+index 9d0f49c..f643b3f 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -107,3 +107,7 @@ tests/prlimit-nofile: tests/prlimit-nofile.c
+@@ -107,3 +107,9 @@ tests/prlimit-nofile: tests/prlimit-nofile.c
  
  test: tests/__build-tstamp__ tests/prlimit-nofile
  	cd tests && env $(TEST_ENV) ./run
@@ -20,6 +20,8 @@ index 9d0f49c..770d7bb 100644
 +install:
 +	install -d -m 755 $(DESTDIR)/usr/bin
 +	install -m 755 redsocks $(DESTDIR)/usr/bin
++	install -d -m 755 $(DESTDIR)/usr/lib/systemd/system
++	install -m 755 redsocks.service $(DESTDIR)/usr/lib/systemd/system
 -- 
 2.7.4
 
