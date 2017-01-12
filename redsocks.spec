@@ -4,7 +4,7 @@
 #
 Name     : redsocks
 Version  : 78a73fca15f4676c42d5dcc209484c40de2c6e33
-Release  : 9
+Release  : 10
 URL      : https://github.com/darkk/redsocks/archive/78a73fca15f4676c42d5dcc209484c40de2c6e33.tar.gz
 Source0  : https://github.com/darkk/redsocks/archive/78a73fca15f4676c42d5dcc209484c40de2c6e33.tar.gz
 Source1  : redsocks.tmpfiles
@@ -52,6 +52,9 @@ rm -rf %{buildroot}
 %make_install
 mkdir -p %{buildroot}/usr/lib/tmpfiles.d
 install -m 0644 %{SOURCE1} %{buildroot}/usr/lib/tmpfiles.d/redsocks.conf
+## make_install_append content
+chmod 0644 %{buildroot}/usr/lib/systemd/system/*service
+## make_install_append end
 
 %files
 %defattr(-,root,root,-)
