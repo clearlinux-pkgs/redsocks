@@ -1,5 +1,5 @@
 PKG_NAME := redsocks
-URL := https://github.com/darkk/redsocks/archive/78a73fca15f4676c42d5dcc209484c40de2c6e33.tar.gz
+URL := https://github.com/darkk/redsocks/archive/release-0.5.tar.gz
 
 
 include ../common/Makefile.common
