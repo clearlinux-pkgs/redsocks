@@ -4,7 +4,7 @@
 #
 Name     : redsocks
 Version  : 0.5
-Release  : 14
+Release  : 15
 URL      : https://github.com/darkk/redsocks/archive/release-0.5.tar.gz
 Source0  : https://github.com/darkk/redsocks/archive/release-0.5.tar.gz
 Source1  : redsocks.tmpfiles
