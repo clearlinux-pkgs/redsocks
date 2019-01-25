@@ -1,2 +1,3 @@
 0001-Add-make-install-target.patch
 0002-Update-redsocks.service-to-work-on-Clear.patch
+0003-Add-a-script-to-configure-iptables-rules-for-automat.patch

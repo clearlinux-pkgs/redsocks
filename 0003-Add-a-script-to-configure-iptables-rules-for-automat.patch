@@ -1,0 +1,336 @@
+From 442770ebd49d195340ac9e7e3e0eab6197a6fc52 Mon Sep 17 00:00:00 2001
+From: Thiago Macieira <thiago.macieira@intel.com>
+Date: Thu, 24 Jan 2019 12:26:24 -0800
+Subject: [PATCH redsocks v0.1] Add a script to configure iptables rules for
+ automatic redsocks use
+
+This script will read a PAC script given on the command-line and parse
+it for IP blocks that should *not* be proxied. Those blocks are then
+added to an ipset table and an iptables NAT rule will force all packets
+not matching to go through the redsocks automatic proxy server.
+
+The script will also configure redsocks to use the proxy specified in
+that PAC script.
+
+Signed-off-by: Thiago Macieira <thiago.macieira@intel.com>
+---
+ Makefile                 |  10 +-
+ parse-pac.pl             | 220 +++++++++++++++++++++++++++++++++++++++
+ redsocks-managed.service |  23 ++++
+ redsocks-wpad.path       |   9 ++
+ redsocks-wpad.service    |  11 ++
+ 5 files changed, 272 insertions(+), 1 deletion(-)
+ create mode 100755 parse-pac.pl
+ create mode 100644 redsocks-managed.service
+ create mode 100644 redsocks-wpad.path
+ create mode 100644 redsocks-wpad.service
+
+diff --git a/Makefile b/Makefile
+index 506adc7..d6e9aa9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -113,5 +113,13 @@ test: tests/__build-tstamp__ tests/prlimit-nofile
+ install:
+ 	install -d -m 755 $(DESTDIR)/usr/bin
+ 	install -m 755 redsocks $(DESTDIR)/usr/bin
++	install -d -m 755 $(DESTDIR)/usr/libexec
++	install -m 755 parse-pac.pl $(DESTDIR)/usr/libexec
+ 	install -d -m 755 $(DESTDIR)/usr/lib/systemd/system
+-	install -m 644 redsocks.service $(DESTDIR)/usr/lib/systemd/system
++	install -m 644 -t $(DESTDIR)/usr/lib/systemd/system \
++		redsocks.service \
++		redsocks-managed.service \
++		redsocks-wpad.service \
++		redsocks-wpad.path
++	install -d -m 755 $(DESTDIR)/usr/lib/systemd/system/multi-user.target.wants
++	ln -s ../redsocks-wpad.path $(DESTDIR)/usr/lib/systemd/system/multi-user.target.wants/redsocks-wpad.path
+diff --git a/parse-pac.pl b/parse-pac.pl
+new file mode 100755
+index 0000000..5ea17cc
+--- /dev/null
++++ b/parse-pac.pl
+@@ -0,0 +1,220 @@
++#!/usr/bin/perl
++use strict;
++use Sys::Syslog qw(:standard :macros);
++
++# Global variables
++my $redsocksport = 1023;
++my $runtimedir = "/run/pacrunner";
++my $pacurl = shift @ARGV or die("Need proxy script URL");
++
++sub run(@) {
++    my @lines;
++    open PROC, "-|", @_
++        or die("Could not execute " . join(' ', @_) . ": $!");
++    while (<PROC>) {
++        chomp;
++        push @lines, $_;
++    }
++    close PROC;
++    die(join(' ', @_) . " exited with code " . ($? >> 8)) if $?;
++    return @lines;
++}
++
++sub downloadWPAD() {
++    # Download using CURL
++    $pacurl = "file://$pacurl" if $pacurl =~ m,^/,; # not entirely correct
++    return run("curl", "-s", "--connect-timeout", "25", "$pacurl");
++}
++
++sub dotquadtoip($) {
++    my($q) = @_;
++
++    my @a = split(/\./, $q);
++    return 0 if (scalar(@a) != 4);
++
++    return ($a[0] << 24) + ($a[1] << 16) + ($a[2] << 8) + $a[3];
++}
++
++sub dotquad($) {
++    my($ip) = @_;
++    return sprintf("%u.%u.%u.%u",
++                   ($ip >> 24) & 0xff,
++                   ($ip >> 16) & 0xff,
++                   ($ip >> 8) & 0xff,
++                   $ip & 0xff);
++}
++
++sub maskwidth($) {
++    my($mask) = @_;
++    my $n = 32;
++    my $m = 0xffffffff;
++
++    while ($n && $m != $mask) {
++        $m = ($m << 1) & 0xffffffff;
++        $n--;
++    }
++
++    return $n;
++}
++
++sub calculateNets($) {
++    my @nets = ({}, {}, {}, {}, {}, {}, {}, {},
++                {}, {}, {}, {}, {}, {}, {}, {},
++                {}, {}, {}, {}, {}, {}, {}, {},
++                {}, {}, {}, {}, {}, {}, {}, {},
++                {});
++    my @xnets = ({}, {}, {}, {}, {}, {}, {}, {},
++                 {}, {}, {}, {}, {}, {}, {}, {},
++                 {}, {}, {}, {}, {}, {}, {}, {},
++                 {}, {}, {}, {}, {}, {}, {}, {},
++                 {});
++
++    sub addnet($$) {
++        my($net, $mask) = @_;
++
++        # Is this an existing net or is it part of a larger net?
++        my $i; my $m;
++
++        for ($i = 0; $i <= $mask; $i++) {
++            $m = (0xffffffff >> $i) ^ 0xffffffff;
++            return if (${$nets[$i]}{$net & $m}); # Nothing to do
++        }
++
++        # Is this a peer of an existing net?
++        if ($mask > 0 && ${$nets[$mask]}{$net ^ (1 << (32-$mask))}) {
++            delete ${$nets[$mask]}{$net ^ (1 << (32-$mask))};
++            $mask--;
++            $m = (0xffffffff >> $mask) ^ 0xffffffff;
++            $net &= $m;
++            addnet($net, $mask);
++        } else {
++            ${$nets[$mask]}{$net}++;
++        }
++    }
++
++    my @lines = @{$_[0]};
++    for my $line (@lines) {
++        while ($line =~ /isinnet\s*\(\s*[^"]*\s*,\s*\"([0-9.]+)\"\s*,\s*\"([0-9.]+)\"\s*\)/i) {
++            my $net  = dotquadtoip($1);
++            my $mask = maskwidth(dotquadtoip($2));
++            ${$xnets[$mask]}{$net}++;
++            $line = "$'";
++        }
++        if ($line =~ /<(html|\?xml|!DOCTYPE)/) {
++            chomp $line;
++            print STDERR "Found XML/HTML line: \"${line}\"\nCaptive portal?\n";
++            return ();
++        }
++    }
++
++    # Add the nets in order of descending size
++    for (my $i = 0; $i <= 32; $i++) {
++        foreach my $n (keys(%{$xnets[$i]})) {
++            addnet($n, $i);
++        }
++    }
++
++    # Add some extra rules
++    addnet(dotquadtoip("0.0.0.0"), 8);
++    addnet(dotquadtoip("10.0.0.0"), 8);
++    addnet(dotquadtoip("169.254.0.0"), 16);
++    addnet(dotquadtoip("172.16.0.0"), 12);
++    addnet(dotquadtoip("192.168.0.0"), 16);
++    addnet(dotquadtoip("224.0.0.0"), 4);
++    addnet(dotquadtoip("240.0.0.0"), 4);
++
++    my @result;
++    for (my $i = 0; $i <= 32; $i++) {
++        foreach my $n (sort(keys(%{$nets[$i]}))) {
++            push @result, dotquad($n) . "/" . $i,;
++        }
++    }
++    return @result;
++}
++
++sub createRedsocksConf($) {
++    my ($proxy) = @_;
++    $proxy =~ m,([a-zA-Z][-a-zA-Z0-9+.]*)://([^:]*)(:[0-9]+)?,;
++    my $proxytype = lc $1;
++    my $proxyhost = $2;
++    my $proxyport = ($3 =~ s/://r);
++
++    if ($proxytype =~ /^socks[45]$/) {
++        $proxyport = 1080 unless defined($proxyport);
++    } elsif ($proxytype eq "http") {
++        $proxyport = 8080 unless defined($proxyport);
++        $proxytype = "http-connect";
++    } else {
++        die("Unknown proxy type: $proxy");
++    }
++
++    mkdir $runtimedir, 0755;
++    open CONF, ">", "$runtimedir/redsocks.conf"
++        or die("Could not open $runtimedir/redsocks.conf for writing: $!");
++    print CONF <<"END_CONF";
++base {
++    log_debug = off;
++    log_info = off;
++    log = "syslog:local7";
++    daemon = on;
++    chroot = "/run/redsocks";
++    redirector = iptables;
++}
++redsocks {
++    local_port = $redsocksport;
++    type = $proxytype;
++    ip = $proxyhost;
++    port = $proxyport;
++}
++END_CONF
++
++    close CONF or die("Could not save $runtimedir/redsocks.conf: $!");
++}
++
++openlog("parse-pac.ply", "pid,perror", LOG_LOCAL0);
++
++my @wpad = downloadWPAD();
++my @networks;
++@networks = calculateNets(\@wpad) if scalar @wpad;
++my $proxying = !!@networks;
++
++# Find out what the fallback proxy is
++# 192.0.2.0/24 is part of the example net, so no one should
++# be routing it.
++my ($proxy) = run("proxy", "tcp://192.0.2.1");
++$proxying = 0 if $proxy eq "direct://";
++
++# Prepare the system
++system("ip route flush cache");
++system("ipset create proxy hash:net family inet 2>/dev/null");
++
++my $iptables_rule = "-p tcp -m set \! -o lo \! --match-set proxy dst -j REDIRECT --to-ports $redsocksport";
++system("iptables -t nat -D OUTPUT $iptables_rule 2>/dev/null");
++system("iptables -t nat -A OUTPUT $iptables_rule");
++
++if ($proxying) {
++    # Found some networks, we're in business
++    syslog(LOG_INFO, "Proxy detected, enabling rules");
++
++    # (Re)start redsocks
++    createRedsocksConf($proxy);
++    run("systemctl", "restart", "redsocks-managed.service");
++} else {
++    # No networks found, flush the rules
++    syslog(LOG_INFO, "No proxy detected, flushing rules");
++    @networks = qw(0.0.0.0/0);
++
++    # Stop redsocks
++    run("systemctl", "stop", "redsocks-managed.service");
++}
++
++# Apply the ipset
++if (open IPSET, "|-", "ipset", "restore") {
++    print IPSET "flush proxy\n";
++    map { print IPSET "add proxy $_\n" }
++        sort { dotquadtoip($a) <=> dotquadtoip($b) } @networks;
++    close IPSET;
++    die("ipset exited with code " . ($? >> 8)) if $?;
++} else {
++    die("Couldn't start ipset: $!");
++}
+diff --git a/redsocks-managed.service b/redsocks-managed.service
+new file mode 100644
+index 0000000..34eb8a6
+--- /dev/null
++++ b/redsocks-managed.service
+@@ -0,0 +1,23 @@
++# -*- conf -*-
++[Unit]
++Description=Transparent redirector of any TCP connection to proxy using your firewall
++AssertPathExists=/run/pacrunner/redsocks.conf
++Conflicts=redsocks.service
++
++[Service]
++Type=forking
++PIDFile=/run/redsocks/redsocks.pid
++User=nobody
++RuntimeDirectory=redsocks
++CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT
++AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT
++NoNewPrivileges=yes
++Environment=REDSOCKS_CONF=/run/pacrunner/redsocks.conf
++ExecStartPre=/usr/bin/redsocks -t -c $REDSOCKS_CONF
++ExecStart=/usr/bin/redsocks -c $REDSOCKS_CONF \
++  -p /redsocks.pid
++ExecStopPost=/bin/rm /run/redsocks/redsocks.pid
++Restart=on-abort
++
++[Install]
++WantedBy=multi-user.target
+diff --git a/redsocks-wpad.path b/redsocks-wpad.path
+new file mode 100644
+index 0000000..6cb0a03
+--- /dev/null
++++ b/redsocks-wpad.path
+@@ -0,0 +1,9 @@
++# -*- conf -*-
++[Unit]
++Description=Watch for proxy script updates
++
++[Path]
++PathModified=/run/pacrunner/wpad.dat
++
++[Install]
++WantedBy=multi-user.target
+diff --git a/redsocks-wpad.service b/redsocks-wpad.service
+new file mode 100644
+index 0000000..6ac5fe2
+--- /dev/null
++++ b/redsocks-wpad.service
+@@ -0,0 +1,11 @@
++# -*- conf -*-
++[Unit]
++Description=Update iptables rules for proxy
++
++[Service]
++ExecStart=/usr/libexec/parse-pac.pl file:///run/pacrunner/wpad.dat
++
++[Install]
++Also=redsocks-wpad.path
++WantedBy=multi-user.target
++
+-- 
+2.20.1
+
