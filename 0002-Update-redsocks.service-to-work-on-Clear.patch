@@ -1,18 +1,22 @@
-From 14cb9e330e41801d76d1471cbf0664ee89460b75 Mon Sep 17 00:00:00 2001
+From a2be17e086d8a8992092241cc68aad35354949e1 Mon Sep 17 00:00:00 2001
 From: Alberto Murillo <alberto.murillo.silva@intel.com>
 Date: Tue, 1 Nov 2016 16:44:32 -0600
-Subject: [PATCH 2/2] set config file path
+Subject: [PATCH] Update redsocks.service to work on Clear
+
+This sets config file path and make systemd create our runtime directory
+in /run.
 
 Signed-off-by: Alberto Murillo <alberto.murillo.silva@intel.com>
+Signed-off-by: Thiago Macieira <thiago.macieira@intel.com>
 ---
- redsocks.service | 5 +++--
- 1 file changed, 3 insertions(+), 2 deletions(-)
+ redsocks.service | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
 
 diff --git a/redsocks.service b/redsocks.service
-index 2913b7d..1031710 100644
+index 2913b7d..ddafedc 100644
 --- a/redsocks.service
 +++ b/redsocks.service
-@@ -1,11 +1,12 @@
+@@ -1,11 +1,13 @@
  [Unit]
  Description=Transparent redirector of any TCP connection to proxy using your firewall
 +ConditionPathExists=/etc/redsocks.conf
@@ -23,10 +27,11 @@ index 2913b7d..1031710 100644
 -EnvironmentFile=/etc/conf.d/redsocks
 -User=redsocks
 +User=nobody
++RuntimeDirectory=redsocks
 +Environment=REDSOCKS_CONF=/etc/redsocks.conf
  ExecStartPre=/usr/bin/redsocks -t -c $REDSOCKS_CONF
  ExecStart=/usr/bin/redsocks -c $REDSOCKS_CONF \
    -p /run/redsocks/redsocks.pid
 -- 
-2.7.4
+2.20.1
 
