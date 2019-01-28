@@ -1,4 +1,4 @@
-From 442770ebd49d195340ac9e7e3e0eab6197a6fc52 Mon Sep 17 00:00:00 2001
+From 4047b23d89ee64fbbb68935bef425df78bcdc592 Mon Sep 17 00:00:00 2001
 From: Thiago Macieira <thiago.macieira@intel.com>
 Date: Thu, 24 Jan 2019 12:26:24 -0800
 Subject: [PATCH redsocks v0.1] Add a script to configure iptables rules for
@@ -17,9 +17,9 @@ Signed-off-by: Thiago Macieira <thiago.macieira@intel.com>
  Makefile                 |  10 +-
  parse-pac.pl             | 220 +++++++++++++++++++++++++++++++++++++++
  redsocks-managed.service |  23 ++++
- redsocks-wpad.path       |   9 ++
+ redsocks-wpad.path       |  10 ++
  redsocks-wpad.service    |  11 ++
- 5 files changed, 272 insertions(+), 1 deletion(-)
+ 5 files changed, 273 insertions(+), 1 deletion(-)
  create mode 100755 parse-pac.pl
  create mode 100644 redsocks-managed.service
  create mode 100644 redsocks-wpad.path
@@ -301,16 +301,17 @@ index 0000000..34eb8a6
 +WantedBy=multi-user.target
 diff --git a/redsocks-wpad.path b/redsocks-wpad.path
 new file mode 100644
-index 0000000..6cb0a03
+index 0000000..ca51885
 --- /dev/null
 +++ b/redsocks-wpad.path
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,10 @@
 +# -*- conf -*-
 +[Unit]
 +Description=Watch for proxy script updates
 +
 +[Path]
-+PathModified=/run/pacrunner/wpad.dat
++PathExists=/run/pacrunner/wpad.dat
++PathChanged=/run/pacrunner/wpad.dat
 +
 +[Install]
 +WantedBy=multi-user.target
