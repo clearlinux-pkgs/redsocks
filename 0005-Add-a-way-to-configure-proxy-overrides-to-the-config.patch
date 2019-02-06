@@ -1,0 +1,125 @@
+From 24404de2d137bee26b1cf5351e01c1dabfbffd3b Mon Sep 17 00:00:00 2001
+From: Thiago Macieira <thiago.macieira@intel.com>
+Date: Tue, 29 Jan 2019 12:29:01 -0800
+Subject: [PATCH] Add a way to configure proxy overrides to the config file
+
+Details:
+1) Sections whose name start with "Match" will be processed in alphabetical
+   order (case sensitive).
+2) The first section where all supplied rules match is applied. Rules are:
+ - HostExists: space separated list of hostnames that need to exist
+ - Domain: domain name to be matched against "domain" or "search" domains from
+   /etc/resolv.conf. If the value starts with a dot (.), then it matches the
+   exact name as well as any subdomains of the value (".example.com" matches
+   "example.com", "foo.example.com" but not "new-example.com").
+ - MatchProxy: Perl regular expression that should match the default proxy as
+   parsed in the PAC script that was found
+3) For the section that matched, apply:
+ - UseProxy: the proxy to set to. If MatchProxy was supplied, then it capture
+   groups from that expression can be used.
+
+Signed-off-by: Thiago Macieira <thiago.macieira@intel.com>
+---
+ parse-pac.pl | 72 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 72 insertions(+)
+
+diff --git a/parse-pac.pl b/parse-pac.pl
+index 332b747..b44f43e 100755
+--- a/parse-pac.pl
++++ b/parse-pac.pl
+@@ -1,6 +1,7 @@
+ #!/usr/bin/perl
+ use strict;
+ use Config::Tiny;
++use Socket qw(:addrinfo);
+ use Sys::Syslog qw(:standard :macros);
+ 
+ # Global variables
+@@ -166,6 +167,76 @@ sub calculateNets($) {
+     return @result;
+ }
+ 
++sub applyProxyOverride($) {
++    sub domainMatchRegex($) {
++        my ($domain) = @_;
++        my $rx;
++        if ($domain =~ /^\.(.*)/) {
++            # starts with a dot, so perform a trailing match search
++            $rx = qr/^(.*\.)\Q$1\E$/ins;
++        } elsif ($domain) {
++            # exact match
++            $rx = qr/^\Q$domain\E$/is;
++        }
++        return $rx;
++    }
++
++    my ($proxy) = @_;
++
++    # load some information from /etc/resolv.conf
++    my @search;
++    if (open RESOLV, "</etc/resolv.conf") {
++        my $domain;
++        while (<RESOLV>) {
++            chomp;
++            s/#.*//;
++            s/\s+/ /;
++            s/^ //;
++            next if /^$/;
++
++            $domain = $1 if /domain (.*)/;
++            if (/search (.*)/) {
++                @search = split / /, $1;
++            }
++        }
++        close RESOLV;
++        push @search, $domain if $domain;
++    }
++
++    my @sections = sort grep(/^Match /, keys %{$Config});
++  SECTION: for my $section (@sections) {
++        my $useproxy = $Config->{$section}{SetProxy};
++        next SECTION unless $useproxy; # ignore sections without instructions
++
++        # Check for hostname existence
++        for my $host (split /\s+/, $Config->{$section}{HostExists}) {
++            # Try to resolve the hostname
++            my ($err, @r) = getaddrinfo($host, "*");
++            next SECTION if $err;
++        }
++
++        # Check for matching DNS search domains
++        if (my $domain = domainMatchRegex($Config->{$section}{Domain})) {
++            next SECTION unless grep(m/$domain/, @search);
++        }
++
++        # Check for the current fallback proxy
++        if (my $mp = $Config->{$section}{MatchProxy}) {
++            next SECTION unless $proxy =~ m/$mp/i;
++
++            # Apply the transform
++            eval "\$proxy =~ s{$mp}{$useproxy}i";
++        } else {
++            # Matched too
++            $proxy = $useproxy;
++        }
++
++        syslog(LOG_INFO, "Section '$section' matched, overriding proxy to $proxy");
++        last SECTION;
++    }
++    return $proxy;
++}
++
+ sub createRedsocksConf($) {
+     my ($proxy) = @_;
+     $proxy =~ m,([a-zA-Z][-a-zA-Z0-9+.]*)://([^:]*)(:[0-9]+)?,;
+@@ -220,6 +291,7 @@ my $proxying = !!@networks;
+ # 192.0.2.0/24 is part of the example net, so no one should
+ # be routing it.
+ my ($proxy) = run("proxy", "tcp://192.0.2.1");
++$proxy = applyProxyOverride($proxy);
+ $proxying = 0 if $proxy eq "direct://";
+ 
+ # Prepare the system
+-- 
+2.20.1
+

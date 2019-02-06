@@ -1,8 +1,8 @@
 From 4047b23d89ee64fbbb68935bef425df78bcdc592 Mon Sep 17 00:00:00 2001
 From: Thiago Macieira <thiago.macieira@intel.com>
 Date: Thu, 24 Jan 2019 12:26:24 -0800
-Subject: [PATCH redsocks v0.1] Add a script to configure iptables rules for
- automatic redsocks use
+Subject: [PATCH] Add a script to configure iptables rules for automatic
+ redsocks use
 
 This script will read a PAC script given on the command-line and parse
 it for IP blocks that should *not* be proxied. Those blocks are then

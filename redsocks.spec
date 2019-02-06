@@ -4,7 +4,7 @@
 #
 Name     : redsocks
 Version  : 0.5
-Release  : 18
+Release  : 19
 URL      : https://github.com/darkk/redsocks/archive/release-0.5.tar.gz
 Source0  : https://github.com/darkk/redsocks/archive/release-0.5.tar.gz
 Summary  : No detailed summary available
@@ -18,6 +18,8 @@ BuildRequires : libevent-dev
 Patch1: 0001-Add-make-install-target.patch
 Patch2: 0002-Update-redsocks.service-to-work-on-Clear.patch
 Patch3: 0003-Add-a-script-to-configure-iptables-rules-for-automat.patch
+Patch4: 0004-Add-support-for-a-configuration-file-for-the-PAC-par.patch
+Patch5: 0005-Add-a-way-to-configure-proxy-overrides-to-the-config.patch
 
 %description
 This tool allows you to redirect any TCP connection to SOCKS or HTTPS
@@ -72,18 +74,20 @@ services components for the redsocks package.
 %patch1 -p1
 %patch2 -p1
 %patch3 -p1
+%patch4 -p1
+%patch5 -p1
 
 %build
 export http_proxy=http://127.0.0.1:9/
 export https_proxy=http://127.0.0.1:9/
 export no_proxy=localhost,127.0.0.1,0.0.0.0
 export LANG=C
-export SOURCE_DATE_EPOCH=1548696657
+export SOURCE_DATE_EPOCH=1549487769
 make  %{?_smp_mflags}
 
 
 %install
-export SOURCE_DATE_EPOCH=1548696657
+export SOURCE_DATE_EPOCH=1549487769
 rm -rf %{buildroot}
 mkdir -p %{buildroot}/usr/share/package-licenses/redsocks
 cp debian/copyright %{buildroot}/usr/share/package-licenses/redsocks/debian_copyright

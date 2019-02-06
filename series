@@ -1,3 +1,5 @@
 0001-Add-make-install-target.patch
 0002-Update-redsocks.service-to-work-on-Clear.patch
 0003-Add-a-script-to-configure-iptables-rules-for-automat.patch
+0004-Add-support-for-a-configuration-file-for-the-PAC-par.patch
+0005-Add-a-way-to-configure-proxy-overrides-to-the-config.patch
